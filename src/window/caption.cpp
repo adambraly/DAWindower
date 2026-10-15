@@ -1,5 +1,7 @@
 #include "caption.h"
+#ifdef DAW_X
 #include "window/name.h"
+#endif
 #ifdef DAW_X
 #include "x/launch.h"
 #endif
@@ -140,8 +142,8 @@ class Frame {
     HWND tooltip = nullptr;
     UINT_PTR hoverTimer = 0;
     UINT_PTR clockTimer = 0;
-    CharacterName characterName;
 #ifdef DAW_X
+    CharacterName characterName;
     std::shared_ptr<LaunchStatus> launch;
     wchar_t launchError[256]{};
 #endif
@@ -199,7 +201,6 @@ class Frame {
             EnableMenuItem(GetSystemMenu(window, FALSE), newCommand, MF_BYCOMMAND | MF_ENABLED);
             paint();
         }
-#endif
         wchar_t character[13]{}, next[256]{};
         if (characterName.read(character))
             swprintf_s(next, L"Dark Ages \u00b7 %s", character);
@@ -207,11 +208,22 @@ class Frame {
             wcscpy_s(next, L"Dark Ages");
         if (std::wcscmp(next, title) != 0)
             SetWindowTextW(window, next);
+#else
+        // A launcher in another process sets the title straight into the window record; no WM_SETTEXT reaches
+        // this thread, so poll the stored text and repaint when it changed.
+        wchar_t next[256]{};
+        GetWindowTextW(window, next, 256);
+        if (std::wcscmp(next, title) != 0) {
+            wcscpy_s(title, next);
+            paint();
+        }
+#endif
     }
 
     void paint(HDC supplied = nullptr) {
         if (destroyed || IsIconic(window) || !windowedFrame(window))
             return;
+        GetWindowTextW(window, title, 256);
         const auto icon = smallWindowIcon(window);
         if (destroyed)
             return; // A host WM_GETICON callback may destroy this HWND.
@@ -611,10 +623,12 @@ LRESULT CALLBACK subclass(HWND w, UINT m, WPARAM a, LPARAM b, UINT_PTR id, DWORD
         f->updateTitle();
         return 0;
     }
-    if (m == WM_SETTEXT && b && reinterpret_cast<const wchar_t*>(b) != f->title)
-        wcsncpy_s(f->title, reinterpret_cast<const wchar_t*>(b), _TRUNCATE);
     const auto result = DefSubclassProc(w, m, a, b);
     if (!f->destroyed) {
+        // The game window is an ANSI class, so WM_SETTEXT carries a char*: read the stored text back
+        // instead of copying the message, and the caption shows whatever the host set.
+        if (m == WM_SETTEXT)
+            GetWindowTextW(w, f->title, 256);
         if (m == WM_DPICHANGED || m == WM_THEMECHANGED || m == WM_SETTINGCHANGE ||
             m == WM_DWMCOMPOSITIONCHANGED)
             f->refreshStyle();
@@ -642,6 +656,9 @@ bool attachCaption(HWND window) {
         return false;
     }
     Call keep(f);
+    GetWindowTextW(window, f->title, 256);
+    if (f->destroyed)
+        return false;
     RECT original{};
     GetClientRect(window, &original);
     f->refreshStyle();
@@ -695,7 +712,9 @@ bool attachCaption(HWND window) {
             f->tooltip = nullptr;
         }
     }
+#ifdef DAW_X
     SetWindowTextW(window, f->title);
+#endif
     if (!f->destroyed)
         f->clockTimer = SetTimer(window, frameId + 2, 1000, nullptr);
     return !f->destroyed;

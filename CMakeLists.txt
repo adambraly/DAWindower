@@ -41,10 +41,9 @@ set(DAW_GRAPHICS
   src/window/icon.cpp
   src/window/frame.cpp
   src/window/caption.cpp
-  src/window/name.cpp
   src/window/sizing.cpp)
 if(DAW_BUILD_X)
-  set(DAW_X_SOURCES src/x/launch.cpp)
+  set(DAW_X_SOURCES src/window/name.cpp src/x/launch.cpp)
   list(APPEND DAW_GRAPHICS ${DAW_X_SOURCES})
 endif()
 set(DAW_SOURCES
@@ -84,7 +83,6 @@ if(BUILD_TESTING)
     src/window/icon.cpp
     src/window/frame.cpp
     src/window/caption.cpp
-    src/window/name.cpp
     src/window/sizing.cpp
     src/graphics/gdi.cpp
     src/compatibility/imports.cpp)
